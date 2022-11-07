@@ -32,7 +32,7 @@ public:
     {
         InitWindow();
         InitVulkan();
-        MainLoop();
+        // MainLoop();
         Shutdown();
     }
 
@@ -117,21 +117,38 @@ private:
         VulkanDebugUtilsMessenger = VulkanInstance.createDebugUtilsMessengerEXT(DebugUtilsCreateInfo);
     }
 
-    void InitVulkan()
+    void PickVulkanPhysicalDevice()
     {
-        CreateVulkanInstance();
-
         const std::vector<vk::PhysicalDevice> PhysicalDevices = VulkanInstance.enumeratePhysicalDevices();
         for (const vk::PhysicalDevice& Device : PhysicalDevices)
         {
             vk::PhysicalDeviceProperties DeviceProperties = Device.getProperties();
+            vk::PhysicalDeviceFeatures DeviceFeatures = Device.getFeatures();
 
-            std::cout << "Device Name: " << DeviceProperties.deviceName << std::endl;
-            const uint32_t ApiVersion = DeviceProperties.apiVersion;
-            std::cout << "Vulkan Version : " << VK_VERSION_MAJOR(ApiVersion) << "." << VK_VERSION_MINOR(ApiVersion) << "." << VK_VERSION_PATCH(ApiVersion) << std::endl;
-            vk::PhysicalDeviceLimits DeviceLimits = DeviceProperties.limits;
-            std::cout << "Max Compute Shared Memory Size: " << DeviceLimits.maxComputeSharedMemorySize / 1024 << " KB" << std::endl;
+            if (DeviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu &&
+                DeviceFeatures.geometryShader)
+            {
+                std::cout << "Device Name: " << DeviceProperties.deviceName << std::endl;
+                const uint32_t ApiVersion = DeviceProperties.apiVersion;
+                std::cout << "Vulkan Version : " << VK_VERSION_MAJOR(ApiVersion) << "." << VK_VERSION_MINOR(ApiVersion) << "." << VK_VERSION_PATCH(ApiVersion) << std::endl;
+                vk::PhysicalDeviceLimits DeviceLimits = DeviceProperties.limits;
+                std::cout << "Max Compute Shared Memory Size: " << DeviceLimits.maxComputeSharedMemorySize / 1024 << " KB" << std::endl;
+                std::cout << "Max Push Constants Memory Size : " << DeviceLimits.maxPushConstantsSize << " B" << std::endl;
+
+                VulkanPhysicalDevice = Device;
+            }
         }
+
+        if (!VulkanPhysicalDevice)
+        {
+            throw std::runtime_error("Failed to find vulkan physical device");
+        }
+    }
+
+    void InitVulkan()
+    {
+        CreateVulkanInstance();
+        PickVulkanPhysicalDevice();
     }
 
     void MainLoop()
@@ -160,7 +177,27 @@ private:
         const std::string MessageSeverityStr = vk::to_string(static_cast<vk::DebugUtilsMessageSeverityFlagBitsEXT>(MessageSeverity));
         const std::string MessageTypeStr = vk::to_string(static_cast<vk::DebugUtilsMessageTypeFlagBitsEXT>(MessageType));
         std::cerr << "[" << MessageSeverityStr << "] " << "[" << MessageTypeStr << "] \n";
-        std::cerr << "\t" << CallbackData->pMessage << "\n" << std::endl;
+
+        if (CallbackData->objectCount > 0)
+        {
+            for (uint32_t ObjectIndex = 0; ObjectIndex < CallbackData->objectCount; ++ObjectIndex)
+            {
+                const VkDebugUtilsObjectNameInfoEXT& Object = CallbackData->pObjects[ObjectIndex];
+                const std::string ObjectTypeStr = vk::to_string(static_cast<vk::ObjectType>(Object.objectType));
+
+                std::cerr << "\t Object " << ObjectIndex << " [ 0x" << std::hex << Object.objectHandle << " ] [" << ObjectTypeStr << " ]";
+
+                if (Object.pObjectName)
+                {
+                    std::cerr << "[ " << Object.pObjectName << " ] ";
+                }
+
+                std::cerr << "\n";
+            }
+        }
+
+        std::cerr << "\n\t " << CallbackData->pMessage << "\n" << std::endl;
+
         return VK_FALSE;
     }
 
@@ -173,6 +210,7 @@ private:
     constexpr static bool bEnableVulkanValidationLayers = true;
     vk::Instance VulkanInstance;
     vk::DebugUtilsMessengerEXT VulkanDebugUtilsMessenger;
+    vk::PhysicalDevice VulkanPhysicalDevice;
 };
 
 int main(int ArgC, char* ArgV[])
