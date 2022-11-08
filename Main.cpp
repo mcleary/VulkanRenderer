@@ -1,5 +1,6 @@
 
 #include <iostream>
+#include <optional>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -145,10 +146,75 @@ private:
         }
     }
 
+    struct QueueFamilyIndices
+    {
+        std::optional<uint32_t> GraphicsQueueFamily;
+        std::optional<uint32_t> ComputeQueueFamily;
+        std::optional<uint32_t> TransferQueueFamily;
+    };
+
+    QueueFamilyIndices FindQueueFamilyIndices() const
+    {
+        QueueFamilyIndices Indices;
+
+        const std::vector<vk::QueueFamilyProperties> QueueFamilyProps = VulkanPhysicalDevice.getQueueFamilyProperties();
+        for (size_t QueueIndex = 0; QueueIndex < QueueFamilyProps.size(); ++QueueIndex)
+        {
+            const vk::QueueFamilyProperties& Props = QueueFamilyProps[QueueIndex];
+            if (Props.queueFlags & vk::QueueFlagBits::eGraphics)
+            {
+                Indices.GraphicsQueueFamily = static_cast<uint32_t>(QueueIndex);
+                continue;
+            }
+
+            if (Props.queueFlags & vk::QueueFlagBits::eCompute)
+            {
+                Indices.ComputeQueueFamily = static_cast<uint32_t>(QueueIndex);
+                continue;
+            }
+
+            if (Props.queueFlags & vk::QueueFlagBits::eTransfer)
+            {
+                Indices.TransferQueueFamily = static_cast<uint32_t>(QueueIndex);
+                continue;
+            }
+        }
+
+        return Indices;
+    }
+
+    void CreateVulkanDevice()
+    {
+        const QueueFamilyIndices Indices = FindQueueFamilyIndices();
+
+        if (!Indices.GraphicsQueueFamily.has_value())
+        {
+            throw std::exception("Physical device doesn't support graphics queues");
+        }
+
+        const float QueuePriority = 1.0f;
+        const vk::DeviceQueueCreateInfo DeviceQueueCreateInfo
+        {
+            vk::DeviceQueueCreateFlags{},
+            Indices.GraphicsQueueFamily.value(),
+            1,
+            &QueuePriority
+        };
+
+        const vk::DeviceCreateInfo DeviceCreateInfo
+        {
+            vk::DeviceCreateFlags{},
+            DeviceQueueCreateInfo
+        };
+
+        VulkanDevice = VulkanPhysicalDevice.createDevice(DeviceCreateInfo);
+    }
+
     void InitVulkan()
     {
         CreateVulkanInstance();
         PickVulkanPhysicalDevice();
+        CreateVulkanDevice();
     }
 
     void MainLoop()
@@ -161,6 +227,7 @@ private:
 
     void Shutdown()
     {
+        VulkanDevice.destroy();
         VulkanInstance.destroyDebugUtilsMessengerEXT(VulkanDebugUtilsMessenger);
         VulkanInstance.destroy();
 
@@ -211,6 +278,7 @@ private:
     vk::Instance VulkanInstance;
     vk::DebugUtilsMessengerEXT VulkanDebugUtilsMessenger;
     vk::PhysicalDevice VulkanPhysicalDevice;
+    vk::Device VulkanDevice;
 };
 
 int main(int ArgC, char* ArgV[])
