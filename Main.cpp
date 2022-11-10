@@ -245,22 +245,31 @@ private:
         const std::string MessageTypeStr = vk::to_string(static_cast<vk::DebugUtilsMessageTypeFlagBitsEXT>(MessageType));
         std::cerr << "[" << MessageSeverityStr << "] " << "[" << MessageTypeStr << "] \n";
 
-        if (CallbackData->objectCount > 0)
+        for (uint32_t ObjectIndex = 0; ObjectIndex < CallbackData->objectCount; ++ObjectIndex)
         {
-            for (uint32_t ObjectIndex = 0; ObjectIndex < CallbackData->objectCount; ++ObjectIndex)
+            const VkDebugUtilsObjectNameInfoEXT& Object = CallbackData->pObjects[ObjectIndex];
+            const std::string ObjectTypeStr = vk::to_string(static_cast<vk::ObjectType>(Object.objectType));
+
+            std::cerr << "\t Object " << ObjectIndex << " [ 0x" << std::hex << Object.objectHandle << " ] [" << ObjectTypeStr << " ]";
+
+            if (Object.pObjectName)
             {
-                const VkDebugUtilsObjectNameInfoEXT& Object = CallbackData->pObjects[ObjectIndex];
-                const std::string ObjectTypeStr = vk::to_string(static_cast<vk::ObjectType>(Object.objectType));
-
-                std::cerr << "\t Object " << ObjectIndex << " [ 0x" << std::hex << Object.objectHandle << " ] [" << ObjectTypeStr << " ]";
-
-                if (Object.pObjectName)
-                {
-                    std::cerr << "[ " << Object.pObjectName << " ] ";
-                }
-
-                std::cerr << "\n";
+                std::cerr << "[ " << Object.pObjectName << " ] ";
             }
+
+            std::cerr << "\n";
+        }
+
+        for (uint32_t LabelIndex = 0; LabelIndex < CallbackData->cmdBufLabelCount; ++LabelIndex)
+        {
+            const char* LabelName = CallbackData->pCmdBufLabels[LabelIndex].pLabelName;
+            std::cerr << "\t Cmd Buffer Label " << LabelIndex << " [ " << LabelName << " ] \n";
+        }
+
+        for (uint32_t LabelIndex = 0; LabelIndex < CallbackData->queueLabelCount; ++LabelIndex)
+        {
+            const char* LabelName = CallbackData->pQueueLabels[LabelIndex].pLabelName;
+            std::cerr << "\t Queue Label " << LabelIndex << " [ " << LabelName << " ] \n";
         }
 
         std::cerr << "\n\t " << CallbackData->pMessage << "\n" << std::endl;
