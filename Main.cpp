@@ -2,8 +2,12 @@
 #include <iostream>
 #include <optional>
 
+#define VK_USE_PLATFORM_WIN32_KHR
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
 
 #include <vulkan/vulkan.hpp>
 
@@ -118,6 +122,18 @@ private:
         VulkanDebugUtilsMessenger = VulkanInstance.createDebugUtilsMessengerEXT(DebugUtilsCreateInfo);
     }
 
+    void CreateVulkanSurface()
+    {
+        const vk::Win32SurfaceCreateInfoKHR SurfaceCreateInfo
+        {
+            vk::Win32SurfaceCreateFlagBitsKHR{},
+            GetModuleHandle(nullptr),
+            glfwGetWin32Window(Window),
+        };
+
+        Surface = VulkanInstance.createWin32SurfaceKHR(SurfaceCreateInfo);
+    }
+
     void PickVulkanPhysicalDevice()
     {
         const std::vector<vk::PhysicalDevice> PhysicalDevices = VulkanInstance.enumeratePhysicalDevices();
@@ -137,6 +153,7 @@ private:
                 std::cout << "Max Push Constants Memory Size : " << DeviceLimits.maxPushConstantsSize << " B" << std::endl;
 
                 VulkanPhysicalDevice = Device;
+                break;
             }
         }
 
@@ -149,8 +166,17 @@ private:
     struct QueueFamilyIndices
     {
         std::optional<uint32_t> GraphicsQueueFamily;
+        std::optional<uint32_t> PresentationFamilhy;
         std::optional<uint32_t> ComputeQueueFamily;
         std::optional<uint32_t> TransferQueueFamily;
+
+        bool IsComplete() const
+        {
+            return GraphicsQueueFamily.has_value()
+                && PresentationFamilhy.has_value()
+                && ComputeQueueFamily.has_value()
+                && TransferQueueFamily.has_value();
+        }
     };
 
     QueueFamilyIndices FindQueueFamilyIndices() const
@@ -164,19 +190,26 @@ private:
             if (Props.queueFlags & vk::QueueFlagBits::eGraphics)
             {
                 Indices.GraphicsQueueFamily = static_cast<uint32_t>(QueueIndex);
-                continue;
+            }
+
+            if (VulkanPhysicalDevice.getSurfaceSupportKHR(Indices.GraphicsQueueFamily.value(), Surface))
+            {
+                Indices.PresentationFamilhy = static_cast<uint32_t>(QueueIndex);
             }
 
             if (Props.queueFlags & vk::QueueFlagBits::eCompute)
             {
                 Indices.ComputeQueueFamily = static_cast<uint32_t>(QueueIndex);
-                continue;
             }
 
             if (Props.queueFlags & vk::QueueFlagBits::eTransfer)
             {
                 Indices.TransferQueueFamily = static_cast<uint32_t>(QueueIndex);
-                continue;
+            }
+
+            if (Indices.IsComplete())
+            {
+                break;
             }
         }
 
@@ -208,11 +241,14 @@ private:
         };
 
         VulkanDevice = VulkanPhysicalDevice.createDevice(DeviceCreateInfo);
+        VulkanGraphicsQueue = VulkanDevice.getQueue(Indices.GraphicsQueueFamily.value(), 0);
+        VulkanPresentationQueue = VulkanDevice.getQueue(Indices.PresentationFamilhy.value(), 0);
     }
 
     void InitVulkan()
     {
         CreateVulkanInstance();
+        CreateVulkanSurface();
         PickVulkanPhysicalDevice();
         CreateVulkanDevice();
     }
@@ -228,6 +264,7 @@ private:
     void Shutdown()
     {
         VulkanDevice.destroy();
+        VulkanInstance.destroySurfaceKHR(Surface);
         VulkanInstance.destroyDebugUtilsMessengerEXT(VulkanDebugUtilsMessenger);
         VulkanInstance.destroy();
 
@@ -288,6 +325,9 @@ private:
     vk::DebugUtilsMessengerEXT VulkanDebugUtilsMessenger;
     vk::PhysicalDevice VulkanPhysicalDevice;
     vk::Device VulkanDevice;
+    vk::Queue VulkanGraphicsQueue;
+    vk::Queue VulkanPresentationQueue;
+    vk::SurfaceKHR Surface;
 };
 
 int main(int ArgC, char* ArgV[])
