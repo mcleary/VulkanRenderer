@@ -130,7 +130,7 @@ private:
             glfwGetWin32Window(Window),
         };
 
-        Surface = VulkanInstance.createWin32SurfaceKHR(SurfaceCreateInfo);
+        VulkanSurface = VulkanInstance.createWin32SurfaceKHR(SurfaceCreateInfo);
     }
 
     struct QueueFamilyIndices
@@ -162,7 +162,7 @@ private:
                 Indices.GraphicsQueueFamily = static_cast<uint32_t>(QueueIndex);
             }
 
-            if (Device.getSurfaceSupportKHR(Indices.GraphicsQueueFamily.value(), Surface))
+            if (Device.getSurfaceSupportKHR(Indices.GraphicsQueueFamily.value(), VulkanSurface))
             {
                 Indices.PresentationFamilhy = static_cast<uint32_t>(QueueIndex);
             }
@@ -185,6 +185,25 @@ private:
 
         return Indices;
     }
+
+    struct SwapChainSupportDetails
+    {
+        vk::SurfaceCapabilitiesKHR Capabilities;
+        std::vector<vk::SurfaceFormatKHR> Formats;
+        std::vector<vk::PresentModeKHR> PresentModes;
+
+        SwapChainSupportDetails(vk::SurfaceKHR Surface, vk::PhysicalDevice Device)
+        {
+            Capabilities = Device.getSurfaceCapabilitiesKHR(Surface);
+            Formats = Device.getSurfaceFormatsKHR(Surface);
+            PresentModes = Device.getSurfacePresentModesKHR(Surface);
+        }
+
+        bool IsSuitable() const
+        {
+            return !Formats.empty() && !PresentModes.empty();
+        }
+    };
 
     void PickVulkanPhysicalDevice()
     {
@@ -216,8 +235,12 @@ private:
 
                 if (bRequiredExtensionsSupported)
                 {
-                    VulkanPhysicalDevice = Device;
-                    break;
+                    const SwapChainSupportDetails SwapChainSupport{ VulkanSurface, Device };
+                    if (SwapChainSupport.IsSuitable())
+                    {
+                        VulkanPhysicalDevice = Device;
+                        break;
+                    }
                 }
             }
         }
@@ -258,6 +281,13 @@ private:
         VulkanPresentationQueue = VulkanDevice.getQueue(Indices.PresentationFamilhy.value(), 0);
     }
 
+    
+
+    void CreateSwapChain()
+    {
+
+    }
+
     void InitVulkan()
     {
         CreateVulkanInstance();
@@ -277,7 +307,7 @@ private:
     void Shutdown()
     {
         VulkanDevice.destroy();
-        VulkanInstance.destroySurfaceKHR(Surface);
+        VulkanInstance.destroySurfaceKHR(VulkanSurface);
         VulkanInstance.destroyDebugUtilsMessengerEXT(VulkanDebugUtilsMessenger);
         VulkanInstance.destroy();
 
@@ -350,7 +380,8 @@ private:
     vk::Device VulkanDevice;
     vk::Queue VulkanGraphicsQueue;
     vk::Queue VulkanPresentationQueue;
-    vk::SurfaceKHR Surface;
+    vk::SurfaceKHR VulkanSurface;
+    vk::SwapchainKHR VulkanSwapChain;
 };
 
 int main(int ArgC, char* ArgV[])
