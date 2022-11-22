@@ -82,13 +82,12 @@ private:
             VK_API_VERSION_1_1
         };
 
-        const std::vector<const char*> Layers = { "VK_LAYER_KHRONOS_validation" };
         const std::vector<const char*> Extensions = GetRequiredVulkanExtensions();
         const vk::InstanceCreateInfo InstanceCreateInfo
         {
             vk::InstanceCreateFlags{},
             &AppInfo,
-            Layers,
+            VulkanLayers,
             Extensions,
         };
 
@@ -134,35 +133,6 @@ private:
         Surface = VulkanInstance.createWin32SurfaceKHR(SurfaceCreateInfo);
     }
 
-    void PickVulkanPhysicalDevice()
-    {
-        const std::vector<vk::PhysicalDevice> PhysicalDevices = VulkanInstance.enumeratePhysicalDevices();
-        for (const vk::PhysicalDevice& Device : PhysicalDevices)
-        {
-            vk::PhysicalDeviceProperties DeviceProperties = Device.getProperties();
-            vk::PhysicalDeviceFeatures DeviceFeatures = Device.getFeatures();
-
-            if (DeviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu &&
-                DeviceFeatures.geometryShader)
-            {
-                std::cout << "Device Name: " << DeviceProperties.deviceName << std::endl;
-                const uint32_t ApiVersion = DeviceProperties.apiVersion;
-                std::cout << "Vulkan Version : " << VK_VERSION_MAJOR(ApiVersion) << "." << VK_VERSION_MINOR(ApiVersion) << "." << VK_VERSION_PATCH(ApiVersion) << std::endl;
-                vk::PhysicalDeviceLimits DeviceLimits = DeviceProperties.limits;
-                std::cout << "Max Compute Shared Memory Size: " << DeviceLimits.maxComputeSharedMemorySize / 1024 << " KB" << std::endl;
-                std::cout << "Max Push Constants Memory Size : " << DeviceLimits.maxPushConstantsSize << " B" << std::endl;
-
-                VulkanPhysicalDevice = Device;
-                break;
-            }
-        }
-
-        if (!VulkanPhysicalDevice)
-        {
-            throw std::runtime_error("Failed to find vulkan physical device");
-        }
-    }
-
     struct QueueFamilyIndices
     {
         std::optional<uint32_t> GraphicsQueueFamily;
@@ -179,11 +149,11 @@ private:
         }
     };
 
-    QueueFamilyIndices FindQueueFamilyIndices() const
+    QueueFamilyIndices FindQueueFamilyIndices(vk::PhysicalDevice Device) const
     {
         QueueFamilyIndices Indices;
 
-        const std::vector<vk::QueueFamilyProperties> QueueFamilyProps = VulkanPhysicalDevice.getQueueFamilyProperties();
+        const std::vector<vk::QueueFamilyProperties> QueueFamilyProps = Device.getQueueFamilyProperties();
         for (size_t QueueIndex = 0; QueueIndex < QueueFamilyProps.size(); ++QueueIndex)
         {
             const vk::QueueFamilyProperties& Props = QueueFamilyProps[QueueIndex];
@@ -192,7 +162,7 @@ private:
                 Indices.GraphicsQueueFamily = static_cast<uint32_t>(QueueIndex);
             }
 
-            if (VulkanPhysicalDevice.getSurfaceSupportKHR(Indices.GraphicsQueueFamily.value(), Surface))
+            if (Device.getSurfaceSupportKHR(Indices.GraphicsQueueFamily.value(), Surface))
             {
                 Indices.PresentationFamilhy = static_cast<uint32_t>(QueueIndex);
             }
@@ -216,16 +186,58 @@ private:
         return Indices;
     }
 
+    void PickVulkanPhysicalDevice()
+    {
+        const std::vector<vk::PhysicalDevice> PhysicalDevices = VulkanInstance.enumeratePhysicalDevices();
+        for (const vk::PhysicalDevice& Device : PhysicalDevices)
+        {
+            vk::PhysicalDeviceProperties DeviceProperties = Device.getProperties();
+            vk::PhysicalDeviceFeatures DeviceFeatures = Device.getFeatures();
+            const std::vector<vk::ExtensionProperties> AvailableExtensions = Device.enumerateDeviceExtensionProperties();
+
+            if (DeviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu &&
+                DeviceFeatures.geometryShader)
+            {
+                std::cout << "Device Name: " << DeviceProperties.deviceName << std::endl;
+                const uint32_t ApiVersion = DeviceProperties.apiVersion;
+                std::cout << "Vulkan Version : " << VK_VERSION_MAJOR(ApiVersion) << "." << VK_VERSION_MINOR(ApiVersion) << "." << VK_VERSION_PATCH(ApiVersion) << std::endl;
+                vk::PhysicalDeviceLimits DeviceLimits = DeviceProperties.limits;
+                std::cout << "Max Compute Shared Memory Size: " << DeviceLimits.maxComputeSharedMemorySize / 1024 << " KB" << std::endl;
+                std::cout << "Max Push Constants Memory Size : " << DeviceLimits.maxPushConstantsSize << " B" << std::endl;
+
+                // TODO: Can this be improved?
+                const bool bRequiredExtensionsSupported = std::all_of(std::begin(RequiredExtensions), std::end(RequiredExtensions), [&AvailableExtensions](const char* RequiredExtension)
+                {
+                    return std::find_if(std::begin(AvailableExtensions), std::end(AvailableExtensions), [RequiredExtension](const vk::ExtensionProperties& ExtensionProperty)
+                    {
+                        return std::string_view{ ExtensionProperty.extensionName } == RequiredExtension;
+                    }) != std::end(AvailableExtensions);
+                });
+
+                if (bRequiredExtensionsSupported)
+                {
+                    VulkanPhysicalDevice = Device;
+                    break;
+                }
+            }
+        }
+
+        if (!VulkanPhysicalDevice)
+        {
+            throw std::runtime_error("Failed to find vulkan physical device");
+        }
+    }
+
     void CreateVulkanDevice()
     {
-        const QueueFamilyIndices Indices = FindQueueFamilyIndices();
+        const QueueFamilyIndices Indices = FindQueueFamilyIndices(VulkanPhysicalDevice);
 
         if (!Indices.GraphicsQueueFamily.has_value())
         {
             throw std::exception("Physical device doesn't support graphics queues");
         }
 
-        const float QueuePriority = 1.0f;
+        constexpr float QueuePriority = 1.0f;
         const vk::DeviceQueueCreateInfo DeviceQueueCreateInfo
         {
             vk::DeviceQueueCreateFlags{},
@@ -237,7 +249,8 @@ private:
         const vk::DeviceCreateInfo DeviceCreateInfo
         {
             vk::DeviceCreateFlags{},
-            DeviceQueueCreateInfo
+            DeviceQueueCreateInfo,
+            RequiredExtensions,
         };
 
         VulkanDevice = VulkanPhysicalDevice.createDevice(DeviceCreateInfo);
@@ -317,6 +330,16 @@ private:
 private:
     constexpr static glm::ivec2 WindowSize{ 800, 600 };
     constexpr static std::string_view AppName = "\"Simple\" Vulkan Renderer";
+
+    constexpr static std::array<const char*, 1> VulkanLayers =
+    {
+        "VK_LAYER_KHRONOS_validation"
+    };
+
+    constexpr static std::array<const char*, 1> RequiredExtensions =
+    {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME
+    };
 
     GLFWwindow* Window;
 
