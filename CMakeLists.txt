@@ -9,6 +9,6 @@ find_package(Vulkan REQUIRED)
 find_package(glfw3 REQUIRED)
 
 add_executable(VulkanRenderer "Main.cpp")
-target_link_libraries(VulkanRenderer PRIVATE glm::glm
+target_link_libraries(VulkanRenderer PRIVATE glm
                                              Vulkan::Vulkan
                                              glfw)
