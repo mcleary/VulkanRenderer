@@ -4,11 +4,11 @@ project(VulkanRenderer)
 
 set(CMAKE_CXX_STANDARD 20)
 
-find_package(glm CONFIG REQUIRED)
+find_package(glm REQUIRED)
 find_package(Vulkan REQUIRED)
 find_package(glfw3 REQUIRED)
 
 add_executable(VulkanRenderer "Main.cpp")
-target_link_libraries(VulkanRenderer PRIVATE glm
+target_link_libraries(VulkanRenderer PRIVATE glm::glm
                                              Vulkan::Vulkan
                                              glfw)
